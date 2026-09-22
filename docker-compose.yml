@@ -16,15 +16,22 @@ x-app: &app
     timeout: 3s
     retries: 3
     start_period: 3s
+  depends_on:                                  # wait for real health
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy  
   networks: [frontend, backend]
 services:
   postgres:
     image: postgres:16-alpine@sha256:cf78e76683b9ca8c5733cbbdce6c9262b45b6767934dd0a95e671f9a0fc20685
     container_name: postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: barq_app
-      POSTGRES_DB: barq_tasks
-      POSTGRES_PASSWORD: BarqLabOnly_7qN2vK8c
+      environment:
+      POSTGRES_USER: ${POSTGRES_USER:?set in .env}          # [secrets come from .env
+      POSTGRES_DB: ${POSTGRES_DB:?set in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
     ports: ["127.0.0.1:15432:5432"]
     volumes:
       - postgres-data:/var/lib/postgresql/backup
