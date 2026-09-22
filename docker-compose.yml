@@ -8,6 +8,8 @@ x-app: &app
     APP_HOST: "0.0.0.0"
     APP_PORT: "8080"
     APP_MESSAGE: "Welcome to BARQ Systems"
+    DATABASE_URL: "postgresql://${POSTGRES_USER:?set in .env}:${POSTGRES_PASSWORD:?set in .env}@postgres:5432/${POSTGRES_DB:?set in .env}"
+    REDIS_URL: "redis://redis:6379/0"
   healthcheck:
     test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=2)"]
     interval: 5s
