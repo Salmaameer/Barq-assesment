@@ -264,5 +264,19 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 - Related commit: none 
 - Remaining uncertainty: none
 
+## Entry 11 / 2026-09-23 / 7:00pm
+- Symptom: After change the `USER root` to `USER app` in the Dockerfile,  still reading the apps as the root.
+- Hypothesis: Running app is still using the image where the default user is USER root.
+- Command or test: `docker exec app-01 whoami` , docker exec app-01 id
+- Actual output: 
+    root 
+    ,uid=0(root) gid=0(root) groups=0(root)
+- Failed attempt and what changed your thinking:none
+- Root cause: image still using the chached Dockerfile.
+- Fix: rebuild the image again from the corrected Dockerfile
+- Retest evidence:  docker exec app-02 whoami -> app
+    docker exec app-01 id  -> uid=10001(app) gid=10001(app) groups=10001(app)
+- Related commit:<8fffa33>
+- Remaining uncertainty:none.
 
 Do not fabricate a failed attempt just to fill the template. Record actual attempts.
