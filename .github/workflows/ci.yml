@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  PROJECT: barq-assessment
+  PUBLIC_PORT: 8080
+
+jobs:
+  validate-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show tool versions
+        run: |
+          docker version
+          docker compose version
+          python3 --version
+
+    
+      - name: Generate .env for CI (no stored secrets)
+        run: |
+          cp .env.example .env
+          RANDOM_PW="$(openssl rand -hex 16)"
+          sed -i "s/change_me_lab_only/${RANDOM_PW}/" .env
+          echo "PUBLIC_PORT=${PUBLIC_PORT}" >> .env
+          grep -c PASSWORD .env
+
+      - name: Syntax and Compose config checks
+        run: |
+          set -e
+          echo "-- shell scripts --"
+          for f in backup.sh restore.sh; do
+            [ -f "$f" ] && bash -n "$f" && echo "OK: $f"
+          done
+          echo "-- python scripts --"
+          for f in validate.py failure_test.py; do
+            [ -f "$f" ] && python3 -m py_compile "$f" && echo "OK: $f"
+          done
+          echo "-- docker-compose.yml --"
+          docker compose -p "$PROJECT" config -q
+          echo "OK: docker compose config"
+          echo "-- nginx config (build not required for -t, run against the file directly) --"
+          docker run --rm -v "$(pwd)/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
+            nginx:1.28-alpine nginx -t
+
+      - name: Build images
+        run: docker compose -p "$PROJECT" build
+
+      - name: Start the environment
+        run: docker compose -p "$PROJECT" up -d
+
+      - name: Wait for readiness (bounded)
+        run: |
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:${PUBLIC_PORT}/ready" || echo "000")
+            echo "attempt $i: /ready -> $code"
+            if [ "$code" = "200" ]; then
+              echo "Environment ready."
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Environment did not become ready within the bound." >&2
+          exit 1
+
+      - name: Show running services
+        if: always()
+        run: docker compose -p "$PROJECT" ps
+
+      - name: Run validate.py
+        run: python3 validate.py
+
+      
+
+      # automatically proves failover/recovery 
+      - name: Run failure_test.py
+        run: python3 failure_test.py
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose -p "$PROJECT" logs --no-color
+
+      - name: Tear down
+        if: always()
+        run: docker compose -p "$PROJECT" down
