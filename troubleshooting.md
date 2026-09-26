@@ -16,7 +16,7 @@ Keep chronological entries. Copy this block for each meaningful investigation.
 
 ## Entry 1 / 2026-09-20 / 18:11
 - Symptom: After `up --build -d`, app containers never became healthy. app-02 logs
-  show `GET /healthz` returning 404 every ~5s 
+  show `GET /healthz` returning 404.
 
 - Hypothesis: (a) healthcheck path /healthz does not exist; (b) APP_HOST=127.0.0.1
   makes the app unreachable from NGINX; (c) app-02 has INSTANCE_ID "app-01".
@@ -279,4 +279,20 @@ nginx: configuration file /etc/nginx/nginx.conf test is successful
 - Related commit:<8fffa33>
 - Remaining uncertainty:none.
 
-Do not fabricate a failed attempt just to fill the template. Record actual attempts.
+## Entry 12 / 2026-09-26 / 1:30pm
+- Symptom: CI's "nginx config" step failed with `host not found in upstream
+  "app-01:8080"`, even though the same nginx.conf had already passed
+  `nginx -t` locally multiple times.
+- Hypothesis: the CI step ran `nginx -t` in a standalone container with no
+  other services, so app-01/app-02 could not resolve.
+- Command or test: reviewed the failing CI step; confirmed nginx resolves
+  static upstream server hostnames at config-load time.
+- Root cause: the CI syntax-check step tested nginx.conf in isolation,
+  before any other container existed on its network.
+- Fix: moved the nginx config check to run via `docker exec nginx nginx -t`
+  after `docker compose up -d`, once app-01/app-02 exist on the network.
+- Retest evidence: pushed and nginx check is passed.
+- Related commit: <9232588>
+- Remaining uncertainty: none - this was a test-methodology bug in ci.yml,
+  not in nginx.conf itself.
+

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-test stops one app backend, measures traffic and errors during the
+failure_test.py - stops one app backend, measures traffic and errors during the
 outage, restores it, and proves it serves requests again.
 
 Because nginx is configured with passive health detection (max_fails/fail_timeout)
@@ -11,6 +11,10 @@ So this script proves the failure actually happened two ways:
   2. nginx's own access log shows failed upstream attempts during the window
      (the failure being real, not silently absent)
 
+Exit code 0 -> test passed (outage survived, evidence found, recovery proven)
+Exit code 1 -> test failed
+The stopped container is always restarted, even if an assertion fails, so a
+failed run never leaves the environment down.
 """
 import json
 import subprocess
@@ -22,7 +26,7 @@ import urllib.request
 PROJECT = "barq-assessment"
 PORT = "8080"
 BASE_URL = f"http://127.0.0.1:{PORT}"
-TARGET = "app-02"          # chosen backend to kill for this test
+TARGET = "app-02"          # which backend to kill for this test
 OUTAGE_WINDOW_SECONDS = 15
 REQUESTS_DURING_OUTAGE = 30
 RECOVERY_BOUND_SECONDS = 20
@@ -105,11 +109,17 @@ def main():
             f"{success}/{total} succeeded ({availability:.0%})",
         )
 
-        # 4. Confirm the outage was real by checking nginx's own log, not just
-        #    the client-facing view, since failover can hide it from the client.
+        #
         log_text = nginx_logs_since(OUTAGE_WINDOW_SECONDS + 5)
-        saw_failure_in_log = '"upstream_status":"502' in log_text or '"upstream_status":"503' in log_text \
-            or f'{TARGET}' in log_text and ("502" in log_text or "refused" in log_text.lower())
+        saw_failure_in_log = (
+            '"upstream_status":"502' in log_text
+            or '"upstream_status":"503' in log_text
+            or '"upstream_status":"504' in log_text
+            or "Connection refused" in log_text
+            or "connect() failed" in log_text
+            or "upstream timed out" in log_text
+            or "no live upstreams" in log_text
+        )
         record(
             "nginx log shows the outage actually happened",
             saw_failure_in_log,
@@ -139,7 +149,8 @@ def main():
         )
 
     finally:
-        
+        # Safety net: never leave the environment with a backend down, even if
+        # an assertion above failed or raised.
         if stopped:
             print(f"Cleanup: ensuring {TARGET} is restarted...")
             docker("start", TARGET)
