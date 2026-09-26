@@ -80,6 +80,11 @@ services:
         condition: service_healthy
       app-02:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1/nginx-health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3    
     networks: [frontend] # only need frontend network because nginx is not exposed to the outside world
 networks:
   frontend:
