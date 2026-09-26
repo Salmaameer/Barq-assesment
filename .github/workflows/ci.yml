@@ -23,7 +23,7 @@ jobs:
           python3 --version
 
     
-      - name: Generate .env for CI (no stored secrets)
+      - name: Generate .env for CI 
         run: |
           cp .env.example .env
           RANDOM_PW="$(openssl rand -hex 16)"
@@ -45,15 +45,16 @@ jobs:
           echo "-- docker-compose.yml --"
           docker compose -p "$PROJECT" config -q
           echo "OK: docker compose config"
-          echo "-- nginx config (build not required for -t, run against the file directly) --"
-          docker run --rm -v "$(pwd)/nginx/nginx.conf:/etc/nginx/nginx.conf:ro" \
-            nginx:1.28-alpine nginx -t
+        
 
       - name: Build images
         run: docker compose -p "$PROJECT" build
 
       - name: Start the environment
         run: docker compose -p "$PROJECT" up -d
+
+      - name: NGINX config check 
+        run: docker exec nginx nginx -t  
 
       - name: Wait for readiness (bounded)
         run: |
